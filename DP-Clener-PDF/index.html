@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PDF Trip Details Cleaner</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+  <style>
+    :root{
+      --bg:#0d1b2a;--card:rgba(255,255,255,.055);--card2:rgba(255,255,255,.03);
+      --border:rgba(255,255,255,.12);--text:#f8fafc;--muted:#94a3b8;
+      --blue:#2563eb;--blue2:#3b82f6;--green:#10b981;--red:#fb7185;--yellow:#fbbf24;
+      --mono:"Consolas","JetBrains Mono",monospace;--font:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;min-height:100vh;font-family:var(--font);color:var(--text);
+      background:radial-gradient(circle at 50% -10%,rgba(37,99,235,.30),transparent 38%),
+      linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px),
+      linear-gradient(90deg,rgba(255,255,255,.035) 1px,transparent 1px),var(--bg);
+      background-size:auto,40px 40px,40px 40px,auto;
+      display:flex;align-items:flex-start;justify-content:center;padding:42px 16px 80px;
+    }
+    .wrap{width:100%;max-width:880px}
+    .card{
+      background:var(--card);border:1px solid var(--border);border-radius:22px;
+      box-shadow:0 28px 80px rgba(0,0,0,.45);padding:34px;backdrop-filter:blur(14px);
+    }
+    .top{display:flex;align-items:center;gap:14px;margin-bottom:8px}
+    .logo{
+      width:48px;height:48px;border-radius:14px;display:grid;place-items:center;
+      background:rgba(37,99,235,.18);border:1px solid rgba(59,130,246,.35);font-size:25px;
+    }
+    h1{margin:0;font-size:30px;letter-spacing:-.04em;line-height:1.08}
+    .subtitle{color:var(--muted);margin:0 0 28px 62px;line-height:1.55;font-size:14px}
+    .grid{display:grid;grid-template-columns:1.2fr .8fr;gap:16px;margin-top:18px}
+    @media(max-width:760px){.card{padding:22px}.grid{grid-template-columns:1fr}.subtitle{margin-left:0}}
+    .label{display:block;margin-bottom:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.12em;font-size:11px;font-weight:700}
+    .drop{
+      min-height:190px;border:2px dashed rgba(255,255,255,.18);border-radius:18px;
+      background:var(--card2);display:grid;place-items:center;text-align:center;
+      padding:24px;position:relative;transition:.18s ease;cursor:pointer;
+    }
+    .drop:hover,.drop.dragover{border-color:var(--blue2);background:rgba(37,99,235,.10)}
+    .drop input{position:absolute;inset:0;opacity:0;cursor:pointer}
+    .drop-icon{font-size:40px;margin-bottom:10px;opacity:.85}
+    .drop-title{font-weight:800;font-size:16px;margin-bottom:6px}
+    .drop-text{color:var(--muted);font-size:13px;line-height:1.45}
+    .file-count{
+      display:inline-block;margin-top:10px;padding:4px 12px;border-radius:999px;
+      font-family:var(--mono);font-size:12px;color:#67e8f9;
+      background:rgba(103,232,249,.08);border:1px solid rgba(103,232,249,.22);
+    }
+    .side{border:1px solid var(--border);background:var(--card2);border-radius:18px;padding:18px}
+    .side h3{margin:0 0 12px;font-size:16px}
+    .side ul{margin:0;padding-left:18px;color:var(--muted);line-height:1.7;font-size:13px}
+    button{
+      width:100%;margin-top:18px;border:0;border-radius:14px;background:var(--blue);
+      color:white;font-weight:800;font-size:15px;padding:16px 20px;cursor:pointer;
+      box-shadow:0 18px 40px rgba(37,99,235,.35);display:flex;align-items:center;
+      justify-content:center;gap:10px;transition:.16s ease;
+    }
+    button:hover:not(:disabled){background:var(--blue2);transform:translateY(-1px)}
+    button:disabled{opacity:.62;cursor:not-allowed;box-shadow:none}
+    .spinner{
+      display:none;width:18px;height:18px;border-radius:50%;
+      border:2px solid rgba(255,255,255,.35);border-top-color:white;animation:spin .7s linear infinite;
+    }
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .log{
+      display:none;margin-top:18px;border:1px solid rgba(255,255,255,.10);border-radius:14px;
+      background:rgba(0,0,0,.28);padding:14px 16px;height:260px;overflow:auto;
+      color:var(--muted);font-family:var(--mono);font-size:12px;line-height:1.65;
+    }
+    .success{color:var(--green)}.error{color:var(--red)}.info{color:#67e8f9}.warn{color:var(--yellow)}
+    .footer-note{margin-top:16px;color:var(--muted);font-size:12px;line-height:1.55}
+    code{font-family:var(--mono);color:#bfdbfe}
+  </style>
+</head>
+
+<body>
+  <main class="wrap">
+    <section class="card">
+      <div class="top">
+        <div class="logo">📄</div>
+        <div><h1>PDF Trip Details Cleaner</h1></div>
+      </div>
+
+      <p class="subtitle">
+        Upload the Vendor TripSheet PDF and download one clean Excel file with only the
+        <b>Trip_Details</b> sheet.
+      </p>
+
+      <div class="grid">
+        <div>
+          <label class="label">Upload PDF / Excel / CSV</label>
+          <div class="drop" id="dropZone">
+            <input id="fileInput" type="file" multiple accept=".pdf,.xlsx,.xls,.csv" />
+            <div>
+              <div class="drop-icon">📂</div>
+              <div class="drop-title">Drop files here or click to browse</div>
+              <div class="drop-text">
+                Supports <code>.pdf</code>, <code>.xlsx</code>, <code>.xls</code>, and <code>.csv</code><br>
+                PDF must be text/selectable PDF, not scanned image PDF.
+              </div>
+              <span class="file-count" id="fileCount">No files selected</span>
+            </div>
+          </div>
+        </div>
+
+        <aside class="side">
+          <h3>Trip_Details Output</h3>
+          <ul>
+            <li>Only one Excel sheet: <b>Trip_Details</b></li>
+            <li>No dashboard or summary sheets</li>
+            <li>No Source_File, Sheet_Name or Page columns</li>
+            <li>Escort rows are kept and marked as Yes/No</li>
+            <li>Uses PDF column positions to avoid skipped employees</li>
+          </ul>
+        </aside>
+      </div>
+
+      <button id="processBtn">
+        <span id="btnText">Clean & Download Trip_Details</span>
+        <span class="spinner" id="spinner"></span>
+      </button>
+
+      <div class="log" id="log"></div>
+
+      <p class="footer-note">
+        v8 parser: Route ID is kept as shown in the PDF, for example 'Deneb Pollux - DP-59', instead of only 'DP-59'.
+      </p>
+    </section>
+  </main>
+
+<script>
+if (window.pdfjsLib) {
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+}
+
+/* UI */
+const fileInput = document.getElementById("fileInput");
+const fileCount = document.getElementById("fileCount");
+const dropZone = document.getElementById("dropZone");
+const processBtn = document.getElementById("processBtn");
+const btnText = document.getElementById("btnText");
+const spinner = document.getElementById("spinner");
+const logBox = document.getElementById("log");
+
+fileInput.addEventListener("change", updateFileCount);
+dropZone.addEventListener("dragover", e => { e.preventDefault(); dropZone.classList.add("dragover"); });
+dropZone.addEventListener("dragleave", () => dropZone.classList.remove("dragover"));
+dropZone.addEventListener("drop", e => {
+  e.preventDefault();
+  dropZone.classList.remove("dragover");
+  fileInput.files = e.dataTransfer.files;
+  updateFileCount();
+});
+processBtn.addEventListener("click", processUploadedFiles);
+
+function updateFileCount() {
+  const n = fileInput.files.length;
+  fileCount.textContent = n ? `${n} file${n > 1 ? "s" : ""} selected` : "No files selected";
+}
+function setLoading(on) {
+  processBtn.disabled = on;
+  btnText.textContent = on ? "Cleaning..." : "Clean & Download Trip_Details";
+  spinner.style.display = on ? "inline-block" : "none";
+}
+function log(message, type = "") {
+  logBox.style.display = "block";
+  const line = document.createElement("div");
+  line.className = type;
+  line.textContent = "> " + message;
+  logBox.appendChild(line);
+  logBox.scrollTop = logBox.scrollHeight;
+}
+
+/* Generic helpers */
+function cleanText(value) {
+  return String(value ?? "")
+    .replace(/\uFFFE/g, "")
+    .replace(/\uFEFF/g, "")
+    .replace(/\u0000/g, "")
+    .replace(/\s+/g, " ")
+    .replace(/\s+,/g, ",")
+    .trim();
+}
+function compactKey(value) {
+  return cleanText(value).toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+function isBlankRow(row) {
+  return !row || row.every(c => cleanText(c) === "");
+}
+function isNumeric(value) {
+  return /^-?\d+(\.\d+)?$/.test(cleanText(value));
+}
+function isSeq(value) {
+  return /^\d+(\.0)?$/.test(cleanText(value));
+}
+function normalizeTripId(value) {
+  const s = cleanText(value).toUpperCase();
+  const m = s.match(/T?\d{4,}/);
+  if (!m) return s;
+  return m[0].startsWith("T") ? m[0] : "T" + m[0];
+}
+function normalizeVehicle(value) {
+  const s = cleanText(value).toUpperCase();
+  return s ? s.replace(/[^A-Z0-9]/g, "") : "";
+}
+function normalizeMobile(value) {
+  const phones = cleanText(value).match(/\d{10}/g);
+  return phones ? phones.join(", ") : cleanText(value).replace(/[^\d,]/g, "");
+}
+function isPhoneLike(value) {
+  return /\d{10}/.test(cleanText(value));
+}
+function normalizeGender(value) {
+  const s = cleanText(value).toLowerCase();
+  if (s === "m" || s === "male") return "Male";
+  if (s === "f" || s === "female") return "Female";
+  return cleanText(value);
+}
+function isEscortName(value) {
+  return /^escort[\s\-_]*/i.test(cleanText(value));
+}
+function formatTime(value) {
+  if (value === null || value === undefined || value === "") return "";
+  if (value instanceof Date && !isNaN(value.getTime())) {
+    return `${String(value.getHours()).padStart(2,"0")}:${String(value.getMinutes()).padStart(2,"0")}`;
+  }
+  if (typeof value === "number") {
+    if (value >= 0 && value < 1) {
+      const totalMinutes = Math.round(value * 24 * 60);
+      const h = Math.floor(totalMinutes / 60) % 24;
+      const m = totalMinutes % 60;
+      return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
+    }
+    return cleanText(value);
+  }
+  const m = cleanText(value).match(/([01]?\d|2[0-3]):[0-5]\d/);
+  return m ? m[0].padStart(5, "0") : cleanText(value);
+}
+function formatDate(value) {
+  if (value === null || value === undefined || value === "") return "";
+  if (value instanceof Date && !isNaN(value.getTime())) {
+    return `${String(value.getDate()).padStart(2,"0")}-${String(value.getMonth()+1).padStart(2,"0")}-${value.getFullYear()}`;
+  }
+  if (typeof value === "number" && value > 20000) {
+    const p = XLSX.SSF.parse_date_code(value);
+    if (p) return `${String(p.d).padStart(2,"0")}-${String(p.m).padStart(2,"0")}-${p.y}`;
+  }
+  const s = cleanText(value);
+  const monthMap = {
+    jan:"01",january:"01",feb:"02",february:"02",mar:"03",march:"03",apr:"04",april:"04",
+    may:"05",jun:"06",june:"06",jul:"07",july:"07",aug:"08",august:"08",
+    sep:"09",sept:"09",september:"09",oct:"10",october:"10",nov:"11",november:"11",dec:"12",december:"12"
+  };
+  let m = s.match(/^(\d{1,2})\s+([A-Za-z]{3,})\s+(\d{2,4})/);
+  if (m) {
+    let yyyy = String(m[3]);
+    if (yyyy.length === 2) yyyy = "20" + yyyy;
+    return `${String(m[1]).padStart(2,"0")}-${monthMap[m[2].toLowerCase()] || m[2]}-${yyyy}`;
+  }
+  m = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})/);
+  if (m) {
+    let yyyy = String(m[3]);
+    if (yyyy.length === 2) yyyy = "20" + yyyy;
+    return `${String(m[1]).padStart(2,"0")}-${String(m[2]).padStart(2,"0")}-${yyyy}`;
+  }
+  return s;
+}
+function emptyTripRow() {
+  return {
+    Date: "", Route_Code: "", Direction: "", Duty: "", Shift_Time: "",
+    Vehicle_No: "", Driver_Name: "", Driver_Mobile: "", Location: "", Category: "",
+    KM: "", Trip_ID: "", Emp_Seq: "", Pickup_Time: "", Employee_ID: "",
+    Employee_Name: "", Gender: "", Address: "", Trip_Type: "", Drop_Area: "",
+    Employee_Mobile: "", Is_Escort: "", Remarks: ""
+  };
+}
+
+/* Line helpers for visual PDF rows */
+function lineText(line) {
+  return cleanText((line.items || [])
+    .slice()
+    .sort((a, b) => a.x - b.x)
+    .map(i => i.str)
+    .join(" "));
+}
+function colText(line, x0, x1) {
+  return cleanText((line.items || [])
+    .filter(i => i.x >= x0 && i.x < x1)
+    .sort((a, b) => a.x - b.x)
+    .map(i => i.str)
+    .join(" "));
+}
+function isDateLine(line) {
+  const t = lineText(line);
+
+  // IMPORTANT FIX:
+  // Do not accept any word as month.
+  // Earlier "3 Sector 24 Gurugram" was wrongly detected as a date:
+  // day=3, month=Sector, year=24.
+  const month =
+    "(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t|tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)";
+
+  const namedDate = new RegExp("^\\d{1,2}\\s+" + month + "\\s+\\d{2,4}\\b", "i");
+  const numericDate = /^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}\b/;
+
+  return namedDate.test(t) || numericDate.test(t);
+}
+function isPassengerStart(line) {
+  return /^\d+$/.test(colText(line, 20, 50)) &&
+         /^([0-2]?\d:[0-5]\d)/.test(colText(line, 50, 100));
+}
+function isGenderText(s) {
+  return /^(Male|Female|M|F)$/i.test(cleanText(s));
+}
+function isTripTypeText(s) {
+  return /^(TIP|TRIP)-?\d*/i.test(cleanText(s));
+}
+
+/* PDF extraction: group text items into visual rows with coordinates */
+async function extractPdfTextPages(file) {
+  if (!window.pdfjsLib) throw new Error("PDF.js is not loaded. Please check internet connection.");
+
+  const buffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+  const pages = [];
+
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page = await pdf.getPage(p);
+    const textContent = await page.getTextContent({ normalizeWhitespace: true, disableCombineTextItems: false });
+
+    const items = textContent.items
+      .map(item => ({
+        str: cleanText(item.str),
+        x: item.transform[4],
+        y: item.transform[5]
+      }))
+      .filter(item => item.str);
+
+    items.sort((a, b) => {
+      if (Math.abs(b.y - a.y) > 2.5) return b.y - a.y;
+      return a.x - b.x;
+    });
+
+    const groups = [];
+    for (const item of items) {
+      let group = groups.find(g => Math.abs(g.y - item.y) <= 2.5);
+      if (!group) {
+        group = { y: item.y, items: [] };
+        groups.push(group);
+      }
+      group.items.push(item);
+    }
+
+    groups.sort((a, b) => b.y - a.y);
+
+    const lines = [];
+    for (const g of groups) {
+      g.items.sort((a, b) => a.x - b.x);
+      const text = cleanText(g.items.map(i => i.str).join(" "));
+      if (!text) continue;
+      if (/^Jun\s+\d{1,2},\s+\d{4}\s+\d{1,2}:\d{2}\s+(AM|PM)$/i.test(text)) continue;
+      if (/^Deneb Pollux$/i.test(text)) continue;
+      lines.push({ y: g.y, items: g.items });
+    }
+
+    pages.push({ pageNo: p, lines });
+  }
+
+  return pages;
+}
+
+/* PDF parser: fixed column positions */
+function parsePdfPagesToTripDetails(pages) {
+  let rows = [];
+
+  for (const page of pages) {
+    const lines = page.lines;
+    let i = 0;
+    let pageRows = [];
+
+    while (i < lines.length) {
+      if (!isDateLine(lines[i])) {
+        i++;
+        continue;
+      }
+
+      const headerResult = parseHeader(lines, i);
+      if (!headerResult.header) {
+        i++;
+        continue;
+      }
+
+      const header = headerResult.header;
+      const expected = Number(headerResult.expectedPax || 0);
+      i = headerResult.nextIndex;
+
+      let tripRows = [];
+      while (i < lines.length && !isDateLine(lines[i])) {
+        if (isPassengerStart(lines[i])) {
+          const paxResult = parsePassenger(lines, i, header);
+          if (paxResult.row) tripRows.push(paxResult.row);
+          i = paxResult.nextIndex;
+        } else {
+          i++;
+        }
+      }
+
+      pageRows = pageRows.concat(tripRows);
+
+      if (expected && expected !== tripRows.length) {
+        log(`${header.Trip_ID}: expected ${expected}, extracted ${tripRows.length}`, "warn");
+      } else {
+        log(`${header.Trip_ID}: extracted ${tripRows.length}/${expected || tripRows.length}`, "success");
+      }
+    }
+
+    log(`Page ${page.pageNo}: ${pageRows.length} rows`, pageRows.length ? "success" : "warn");
+    rows = rows.concat(pageRows);
+  }
+
+  return rows;
+}
+function parseHeader(lines, start) {
+  const hLine = lines[start];
+  let j = start + 1;
+  const cont = [];
+
+  while (j < lines.length && !isPassengerStart(lines[j]) && !isDateLine(lines[j])) {
+    cont.push(lines[j]);
+    j++;
+  }
+
+  const allText = cleanText([hLine, ...cont].map(lineText).join(" "));
+
+  const date = colText(hLine, 20, 85) || (lineText(hLine).match(/\d{1,2}\s+[A-Za-z]{3,}\s+\d{2,4}/) || [""])[0];
+
+  const dutyLine = colText(hLine, 150, 220);
+  const dutyMatch = dutyLine.match(/(Login|Logout)\s+([0-2]?\d:[0-5]\d)/i);
+  const duty = dutyMatch ? dutyMatch[1].toUpperCase() : "";
+  const shiftTime = dutyMatch ? formatTime(dutyMatch[2]) : "";
+
+  // Keep Route ID exactly as shown in the PDF, for example:
+  // "Deneb Pollux - DP-59" instead of only "DP-59".
+  let routeCode = cleanText([
+    colText(hLine, 85, 150),
+    ...cont.map(l => colText(l, 85, 150))
+  ].join(" "));
+
+  // Fallback: if column extraction misses it, rebuild from the full header text.
+  if (!routeCode) {
+    const routeMatch = allText.match(/(.*?\bDP-\d+[A-Z-]*\b)/i);
+    routeCode = routeMatch ? cleanText(routeMatch[1]) : "";
+  }
+
+  const vehicleText = cleanText([colText(hLine, 220, 280), ...cont.map(l => colText(l, 220, 280))].join(" "));
+  const vehicleNo = normalizeVehicle(vehicleText);
+
+  const driverText = cleanText([
+    colText(hLine, 275, 360),
+    ...cont.map(l => colText(l, 275, 358))
+  ].join(" "));
+
+  const locationText = cleanText([
+    colText(hLine, 358, 415),
+    ...cont.map(l => colText(l, 350, 415))
+  ].join(" "));
+
+  const driverMobile = normalizeMobile(colText(hLine, 410, 500));
+
+  const category = /MARSHAL(L)?/i.test(allText) ? "MARSHALL" : "Regular";
+
+  let km = "";
+  let expectedPax = "";
+  let tripId = "";
+
+  const rightText = colText(hLine, 540, 730);
+  const parts = rightText.split(/\s+/).filter(Boolean);
+  for (const t of parts) {
+    if (/^T\d{4,}$/i.test(t)) {
+      tripId = normalizeTripId(t);
+    } else if (/^\d+(\.\d+)?$/.test(t)) {
+      if (!km) km = t;
+      else if (!expectedPax) expectedPax = t;
+    }
+  }
+
+  if (!tripId) {
+    const tid = allText.match(/\bT\d{4,}\b/i);
+    tripId = tid ? normalizeTripId(tid[0]) : "";
+  }
+
+  if (!tripId) {
+    log("Header failed: " + allText.substring(0, 160), "warn");
+    return { header: null, nextIndex: Math.max(start + 1, j) };
+  }
+
+  const h = emptyTripRow();
+  h.Date = formatDate(date);
+  h.Route_Code = routeCode;
+  h.Duty = duty;
+  h.Direction = duty === "LOGIN" ? "PICKUP" : (duty === "LOGOUT" ? "DROP" : "");
+  h.Shift_Time = shiftTime;
+  h.Vehicle_No = vehicleNo;
+  h.Driver_Name = driverText;
+  h.Driver_Mobile = driverMobile;
+  h.Location = locationText;
+  h.Category = category;
+  h.KM = km;
+  h.Trip_ID = tripId;
+  h.Remarks = expectedPax ? `PDF Pax Count: ${expectedPax}` : "";
+
+  return { header: finalCleanRow(h), nextIndex: j, expectedPax };
+}
+function parsePassenger(lines, start, header) {
+  const first = lines[start];
+  let j = start + 1;
+  const cont = [];
+
+  while (j < lines.length && !isPassengerStart(lines[j]) && !isDateLine(lines[j])) {
+    cont.push(lines[j]);
+    j++;
+  }
+
+  const row = { ...emptyTripRow(), ...header };
+
+  row.Emp_Seq = colText(first, 20, 50);
+  row.Pickup_Time = formatTime(colText(first, 50, 100));
+  row.Employee_Name = colText(first, 95, 200);
+  row.Gender = normalizeGender(colText(first, 198, 245));
+  row.Address = colText(first, 245, 500);
+  row.Trip_Type = colText(first, 495, 545).toUpperCase();
+  row.Drop_Area = colText(first, 535, 645);
+  row.Employee_Mobile = normalizeMobile(colText(first, 645, 760));
+
+  for (const c of cont) {
+    const addr = colText(c, 245, 500);
+    if (addr) row.Address = cleanText(row.Address + " " + addr);
+
+    const ttype = colText(c, 495, 545);
+    if (ttype && !row.Trip_Type) row.Trip_Type = ttype.toUpperCase();
+
+    const drop = colText(c, 535, 645);
+    if (drop) row.Drop_Area = cleanText(row.Drop_Area + " " + drop);
+
+    const phone = colText(c, 645, 760);
+    if (phone && !row.Employee_Mobile) row.Employee_Mobile = normalizeMobile(phone);
+  }
+
+  // Fallback if PDF text chunks shifted slightly and name/gender/address were not captured.
+  if (!row.Gender || !isGenderText(row.Gender)) {
+    const text = lineText(first);
+    const m = text.match(/^\d+\s+([0-2]?\d:[0-5]\d)\s+(.*?)\s+(Male|Female)\s+(.+)$/i);
+    if (m) {
+      row.Pickup_Time = formatTime(m[1]);
+      row.Employee_Name = cleanText(m[2]);
+      row.Gender = normalizeGender(m[3]);
+      const rest = cleanText(m[4]);
+      const tip = rest.match(/\bTIP-?\d*\b/i);
+      if (tip) {
+        row.Address = cleanText(rest.substring(0, tip.index));
+        row.Trip_Type = tip[0].toUpperCase();
+        const afterTip = cleanText(rest.substring(tip.index + tip[0].length));
+        const phone = afterTip.match(/\d{10}/g);
+        row.Employee_Mobile = phone ? phone.join(", ") : row.Employee_Mobile;
+        if (phone) {
+          row.Drop_Area = cleanText(afterTip.substring(0, afterTip.search(/\d{10}/)));
+        } else {
+          row.Drop_Area = afterTip;
+        }
+      }
+    }
+  }
+
+  row.Is_Escort = isEscortName(row.Employee_Name) ? "Yes" : "No";
+
+  if (!row.Employee_Name && !row.Address && !row.Employee_Mobile) {
+    return { row: null, nextIndex: Math.max(start + 1, j) };
+  }
+
+  return { row: finalCleanRow(row), nextIndex: Math.max(start + 1, j) };
+}
+
+/* Excel / CSV fallback */
+const HEADER_ALIASES = {
+  "date":"Date","tripdate":"Date","shiftdate":"Date","routecode":"Route_Code","route":"Route_Code",
+  "direction":"Direction","duty":"Duty","shifttime":"Shift_Time","vehicle":"Vehicle_No",
+  "vehicleno":"Vehicle_No","vehiclenumber":"Vehicle_No","cabregno":"Vehicle_No",
+  "driver":"Driver_Name","drivername":"Driver_Name","drivermobile":"Driver_Mobile",
+  "location":"Location","agencyname":"Location","category":"Category","marshal":"Category",
+  "km":"KM","kilometer":"KM","kms":"KM","tripid":"Trip_ID","paxno":"Emp_Seq",
+  "empseq":"Emp_Seq","seq":"Emp_Seq","reportingtime":"Pickup_Time","pickuptime":"Pickup_Time",
+  "employeeid":"Employee_ID","empid":"Employee_ID","employeename":"Employee_Name",
+  "empname":"Employee_Name","name":"Employee_Name","gender":"Gender","address":"Address",
+  "employeeaddress":"Address","reportinglocation":"Trip_Type","triptype":"Trip_Type",
+  "landmark":"Drop_Area","droparea":"Drop_Area","droplocation":"Drop_Area",
+  "employeemobile":"Employee_Mobile","passengermobile":"Employee_Mobile",
+  "contactno":"Employee_Mobile","mobile":"Employee_Mobile","isescort":"Is_Escort",
+  "remark":"Remarks","remarks":"Remarks"
+};
+function cleanWorkbookFile(wb) {
+  const rows = [];
+  const tripSheetName = wb.SheetNames.find(n => compactKey(n) === "tripdetails");
+
+  if (tripSheetName) {
+    const json = XLSX.utils.sheet_to_json(wb.Sheets[tripSheetName], { defval: "", raw: true });
+    json.forEach(obj => {
+      const out = emptyTripRow();
+      Object.keys(obj).forEach(key => {
+        const target = HEADER_ALIASES[compactKey(key)];
+        if (target) out[target] = obj[key];
+      });
+      rows.push(finalCleanRow(out));
+    });
+    return rows.filter(r => r.Trip_ID || r.Employee_Name || r.Vehicle_No);
+  }
+
+  for (const sheetName of wb.SheetNames) {
+    const rawRows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, defval: "", raw: true });
+    rows.push(...cleanRawExcelRows(rawRows));
+  }
+  return rows;
+}
+function cleanRawExcelRows(rawRows) {
+  const rows = [];
+  let header = null;
+
+  rawRows.forEach(row => {
+    if (isBlankRow(row)) return;
+    const tripIdx = row.findIndex(v => /^T?\d{4,}$/i.test(cleanText(v)));
+
+    if (tripIdx >= 0) {
+      header = emptyTripRow();
+      header.Date = formatDate(row[0]);
+      header.Route_Code = ((cleanText(row[1]).match(/DP-\d+[A-Z-]*/i) || [""])[0]).toUpperCase();
+      const dutyMatch = cleanText(row[2]).match(/^(Login|Logout)\s+([0-2]?\d:[0-5]\d)/i);
+      header.Duty = dutyMatch ? dutyMatch[1].toUpperCase() : "";
+      header.Direction = header.Duty === "LOGIN" ? "PICKUP" : "DROP";
+      header.Shift_Time = dutyMatch ? formatTime(dutyMatch[2]) : "";
+      header.Vehicle_No = normalizeVehicle(row[3]);
+      header.Driver_Name = cleanText(row[4]);
+      header.Location = cleanText(row[5] || row[1]).replace(/\s*-\s*DP-\d+[A-Z-]*/i, "");
+      header.Driver_Mobile = normalizeMobile(row[6]);
+      header.Category = row.map(cleanText).some(v => /^MARSHAL(L)?$/i.test(v)) ? "MARSHALL" : "Regular";
+      header.KM = cleanText(row[tripIdx - 2] || row[8]);
+      header.Trip_ID = normalizeTripId(row[tripIdx]);
+      header = finalCleanRow(header);
+      return;
+    }
+
+    if (header && isSeq(row[0])) {
+      const out = { ...emptyTripRow(), ...header };
+      out.Emp_Seq = cleanText(row[0]);
+      out.Pickup_Time = formatTime(row[1]);
+
+      const genderIdx = row.findIndex(v => /^(male|female|m|f)$/i.test(cleanText(v)));
+      const phoneIdx = (() => {
+        for (let k = row.length - 1; k >= 0; k--) if (isPhoneLike(row[k])) return k;
+        return -1;
+      })();
+
+      if (genderIdx >= 0) {
+        out.Employee_Name = cleanText(row.slice(2, genderIdx).filter(Boolean).join(" "));
+        out.Gender = normalizeGender(row[genderIdx]);
+        const tipIdx = row.findIndex((v, idx) => idx > genderIdx && /^TIP|^TRIP/i.test(cleanText(v)));
+        if (tipIdx >= 0) {
+          out.Address = cleanText(row.slice(genderIdx + 1, tipIdx).filter(Boolean).join(" "));
+          out.Trip_Type = cleanText(row[tipIdx]);
+          out.Drop_Area = cleanText(row.slice(tipIdx + 1, phoneIdx >= 0 ? phoneIdx : row.length).filter(Boolean).join(" "));
+        }
+      }
+
+      out.Employee_Mobile = normalizeMobile(phoneIdx >= 0 ? row[phoneIdx] : row[10]);
+      out.Is_Escort = isEscortName(out.Employee_Name) ? "Yes" : "No";
+      rows.push(finalCleanRow(out));
+    }
+  });
+
+  return rows;
+}
+
+/* Main */
+async function processUploadedFiles() {
+  if (!fileInput.files.length) {
+    alert("Please upload at least one PDF, Excel or CSV file.");
+    return;
+  }
+
+  logBox.innerHTML = "";
+  setLoading(true);
+
+  try {
+    let allRows = [];
+
+    for (const file of fileInput.files) {
+      const name = file.name || "uploaded_file";
+      const ext = name.split(".").pop().toLowerCase();
+      log(`Reading ${name}`, "info");
+
+      if (ext === "pdf") {
+        const pages = await extractPdfTextPages(file);
+        log(`PDF pages found: ${pages.length}`, "info");
+        const rows = parsePdfPagesToTripDetails(pages);
+        log(`${rows.length} Trip_Details rows extracted from PDF`, rows.length ? "success" : "warn");
+        allRows = allRows.concat(rows);
+      } else if (["xlsx", "xls", "csv"].includes(ext)) {
+        const buffer = await file.arrayBuffer();
+        const wb = XLSX.read(buffer, { type: "array", cellDates: true, cellText: false, raw: true });
+        const rows = cleanWorkbookFile(wb);
+        log(`${rows.length} Trip_Details rows extracted from workbook`, rows.length ? "success" : "warn");
+        allRows = allRows.concat(rows);
+      } else {
+        log(`Skipped unsupported file: ${name}`, "warn");
+      }
+    }
+
+    allRows = allRows.map(finalCleanRow).filter(r => r.Trip_ID || r.Employee_Name || r.Vehicle_No);
+
+    if (!allRows.length) {
+      log("No trip detail rows were found. If this PDF is scanned, OCR is required.", "error");
+      alert("No trip detail rows were found. If this PDF is scanned, OCR is required.");
+      return;
+    }
+
+    exportTripDetails(allRows);
+    log(`Done. Exported ${allRows.length} rows.`, "success");
+  } catch (err) {
+    console.error(err);
+    log(err.message || String(err), "error");
+    alert("Cleaning failed: " + (err.message || err));
+  } finally {
+    setLoading(false);
+  }
+}
+function finalCleanRow(r) {
+  const out = { ...emptyTripRow(), ...r };
+
+  out.Date = formatDate(out.Date);
+  out.Route_Code = cleanText(out.Route_Code).toUpperCase();
+  out.Direction = cleanText(out.Direction).toUpperCase();
+  out.Duty = cleanText(out.Duty).toUpperCase();
+  out.Shift_Time = formatTime(out.Shift_Time);
+  out.Vehicle_No = normalizeVehicle(out.Vehicle_No);
+  out.Driver_Name = cleanText(out.Driver_Name);
+  out.Driver_Mobile = normalizeMobile(out.Driver_Mobile);
+  out.Location = cleanText(out.Location);
+  out.Category = cleanText(out.Category).toUpperCase().includes("MARSHAL") ? "MARSHALL" : (cleanText(out.Category) || "Regular");
+  out.KM = cleanText(out.KM);
+  out.Trip_ID = normalizeTripId(out.Trip_ID);
+  out.Emp_Seq = cleanText(out.Emp_Seq);
+  out.Pickup_Time = formatTime(out.Pickup_Time);
+  out.Employee_ID = cleanText(out.Employee_ID);
+  out.Employee_Name = cleanText(out.Employee_Name);
+  out.Gender = normalizeGender(out.Gender);
+  out.Address = cleanText(out.Address);
+  out.Trip_Type = cleanText(out.Trip_Type);
+  out.Drop_Area = cleanText(out.Drop_Area);
+  out.Employee_Mobile = normalizeMobile(out.Employee_Mobile);
+  out.Is_Escort = isEscortName(out.Employee_Name) ? "Yes" : (cleanText(out.Is_Escort) || "No");
+  out.Remarks = cleanText(out.Remarks);
+
+  return out;
+}
+
+/* Excel Export */
+function exportTripDetails(rows) {
+  const columns = [
+    "SR.NO","DATE","ROUTE CODE","DIRECTION","DUTY","SHIFT TIME","VEHICLE NO",
+    "DRIVER NAME","DRIVER MOBILE","LOCATION","CATEGORY","KM","TRIP ID","EMP SEQ",
+    "PICKUP TIME","EMPLOYEE ID","EMPLOYEE NAME","GENDER","ADDRESS","TRIP TYPE",
+    "DROP AREA","EMPLOYEE MOBILE","IS ESCORT","REMARKS"
+  ];
+
+  const exportRows = rows.map((r, idx) => ({
+    "SR.NO": idx + 1,
+    "DATE": r.Date,
+    "ROUTE CODE": r.Route_Code,
+    "DIRECTION": r.Direction,
+    "DUTY": r.Duty,
+    "SHIFT TIME": r.Shift_Time,
+    "VEHICLE NO": r.Vehicle_No,
+    "DRIVER NAME": r.Driver_Name,
+    "DRIVER MOBILE": r.Driver_Mobile,
+    "LOCATION": r.Location,
+    "CATEGORY": r.Category,
+    "KM": r.KM,
+    "TRIP ID": r.Trip_ID,
+    "EMP SEQ": r.Emp_Seq,
+    "PICKUP TIME": r.Pickup_Time,
+    "EMPLOYEE ID": r.Employee_ID,
+    "EMPLOYEE NAME": r.Employee_Name,
+    "GENDER": r.Gender,
+    "ADDRESS": r.Address,
+    "TRIP TYPE": r.Trip_Type,
+    "DROP AREA": r.Drop_Area,
+    "EMPLOYEE MOBILE": r.Employee_Mobile,
+    "IS ESCORT": r.Is_Escort,
+    "REMARKS": r.Remarks
+  }));
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.json_to_sheet(exportRows, { header: columns });
+
+  applyExcelStyle(ws);
+  XLSX.utils.book_append_sheet(wb, ws, "Trip_Details");
+  XLSX.writeFile(wb, `Trip_Details_Cleaned_${todayStamp()}.xlsx`);
+}
+function todayStamp() {
+  const d = new Date();
+  return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}`;
+}
+function applyExcelStyle(ws) {
+  if (!ws || !ws["!ref"]) return;
+
+  const range = XLSX.utils.decode_range(ws["!ref"]);
+  const headerStyle = {
+    fill: { patternType: "solid", fgColor: { rgb: "366092" } },
+    font: { name: "Cambria", sz: 11, bold: true, color: { rgb: "FFFFFF" } },
+    alignment: { horizontal: "center", vertical: "center", wrapText: true },
+    border: borderStyle()
+  };
+  const bodyStyle = {
+    font: { name: "Cambria", sz: 10 },
+    alignment: { horizontal: "center", vertical: "center", wrapText: true },
+    border: borderStyle()
+  };
+  const addressStyle = {
+    font: { name: "Cambria", sz: 10 },
+    alignment: { horizontal: "left", vertical: "top", wrapText: true },
+    border: borderStyle()
+  };
+
+  for (let R = range.s.r; R <= range.e.r; R++) {
+    for (let C = range.s.c; C <= range.e.c; C++) {
+      const addr = XLSX.utils.encode_cell({ r: R, c: C });
+      if (!ws[addr]) ws[addr] = { v: "", t: "s" };
+      if (R === 0) {
+        ws[addr].s = headerStyle;
+      } else {
+        const header = cleanText(ws[XLSX.utils.encode_cell({ r: 0, c: C })]?.v);
+        ws[addr].s = header === "ADDRESS" ? addressStyle : bodyStyle;
+      }
+    }
+  }
+
+  ws["!autofilter"] = { ref: ws["!ref"] };
+  ws["!freeze"] = { xSplit: 0, ySplit: 1 };
+
+  const widthMap = {
+    "SR.NO": 8, "DATE": 12, "ROUTE CODE": 13, "DIRECTION": 12, "DUTY": 10,
+    "SHIFT TIME": 12, "VEHICLE NO": 16, "DRIVER NAME": 22, "DRIVER MOBILE": 16,
+    "LOCATION": 22, "CATEGORY": 12, "KM": 10, "TRIP ID": 12, "EMP SEQ": 8,
+    "PICKUP TIME": 12, "EMPLOYEE ID": 14, "EMPLOYEE NAME": 26, "GENDER": 10,
+    "ADDRESS": 70, "TRIP TYPE": 12, "DROP AREA": 34, "EMPLOYEE MOBILE": 18,
+    "IS ESCORT": 10, "REMARKS": 24
+  };
+
+  const headers = [];
+  for (let C = range.s.c; C <= range.e.c; C++) {
+    headers.push(cleanText(ws[XLSX.utils.encode_cell({ r: 0, c: C })]?.v));
+  }
+  ws["!cols"] = headers.map(h => ({ wch: widthMap[h] || 14 }));
+
+  const rowHeights = [];
+  for (let R = range.s.r; R <= range.e.r; R++) {
+    rowHeights.push({ hpt: R === 0 ? 28 : 34 });
+  }
+  ws["!rows"] = rowHeights;
+}
+function borderStyle() {
+  return {
+    top: { style: "thin", color: { rgb: "B0B0B0" } },
+    bottom: { style: "thin", color: { rgb: "B0B0B0" } },
+    left: { style: "thin", color: { rgb: "B0B0B0" } },
+    right: { style: "thin", color: { rgb: "B0B0B0" } }
+  };
+}
+</script>
+</body>
+</html>
